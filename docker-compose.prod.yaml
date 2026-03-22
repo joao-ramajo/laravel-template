@@ -25,7 +25,7 @@ services:
       dockerfile: docker/nginx/Dockerfile
     container_name: laravel-nginx
     ports:
-      - "8081:80"
+      - "8086:80"
     volumes:
       - laravel_storage_public:/var/www/storage/app/public:ro
     depends_on:
