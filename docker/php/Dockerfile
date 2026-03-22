@@ -1,9 +1,8 @@
 # ========================
-# STAGE 1 – Composer
+# STAGE 1 - Composer
 # ========================
 FROM php:8.5-cli AS composer
 
-# Instalar dependências do sistema
 RUN apt-get update && apt-get install -y \
     libicu-dev \
     libpng-dev \
@@ -11,10 +10,10 @@ RUN apt-get update && apt-get install -y \
     libfreetype6-dev \
     libzip-dev \
     zip unzip git curl \
-&& docker-php-ext-configure gd --with-freetype --with-jpeg \
-&& docker-php-ext-install gd intl pdo_mysql bcmath zip
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd intl pdo_mysql bcmath zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /app
@@ -28,11 +27,29 @@ COPY . .
 RUN composer dump-autoload --optimize --classmap-authoritative
 
 # ========================
-# STAGE 2 – PHP Final
+# STAGE 2 - Frontend
+# ========================
+# Projeto sem frontend?
+# Basta comentar/remover este stage e o COPY --from=frontend no stage final.
+FROM node:22-alpine AS frontend
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+COPY resources resources
+COPY public public
+COPY vite.config.js ./
+
+RUN npm run build
+
+# ========================
+# STAGE 3 - PHP Final
 # ========================
 FROM php:8.5-fpm
 
-# Extensões necessárias
 RUN apt-get update && apt-get install -y \
     libicu-dev \
     libpng-dev \
@@ -46,17 +63,12 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /var/www
 
-# Copia app
 COPY --chown=www-data:www-data . .
+COPY --from=composer --chown=www-data:www-data /app/vendor /var/www/vendor
+COPY --from=frontend --chown=www-data:www-data /app/public/build /var/www/public/build
 
-# Criar diretório public/build antes de copiar
-RUN mkdir -p public/build
-
-# Copia dependências
-COPY --from=composer --chown=www-data:www-data /app/vendor vendor
-
-# Permissões
-RUN chown -R www-data:www-data storage bootstrap/cache public/build \
+RUN mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache public/build \
+    && chown -R www-data:www-data /var/www \
     && chmod -R 755 /var/www \
     && chmod -R 775 storage bootstrap/cache
 
