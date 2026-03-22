@@ -1,18 +1,19 @@
 # ========================
-# STAGE 1 - Composer
+# STAGE 1 - PHP Base
 # ========================
-FROM php:8.5-cli AS composer
+FROM php:8.5-fpm AS php-base
 
 RUN apt-get update && apt-get install -y \
     libicu-dev \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
     libzip-dev \
     zip unzip git curl \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd intl pdo_mysql bcmath zip \
+    && docker-php-ext-install intl pdo pdo_mysql bcmath zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# ========================
+# STAGE 2 - Composer
+# ========================
+FROM php-base AS composer
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -24,10 +25,12 @@ RUN composer install --no-dev --prefer-dist --no-scripts --no-autoloader
 
 COPY . .
 
+RUN rm -f bootstrap/cache/*.php
+
 RUN composer dump-autoload --optimize --classmap-authoritative
 
 # ========================
-# STAGE 2 - Frontend
+# STAGE 3 - Frontend
 # ========================
 # Projeto sem frontend?
 # Basta comentar/remover este stage e o COPY --from=frontend no stage final.
@@ -46,20 +49,9 @@ COPY vite.config.js ./
 RUN npm run build
 
 # ========================
-# STAGE 3 - PHP Final
+# STAGE 4 - PHP Final
 # ========================
-FROM php:8.5-fpm
-
-RUN apt-get update && apt-get install -y \
-    libicu-dev \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libzip-dev \
-    zip unzip git curl \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd intl pdo pdo_mysql bcmath zip \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+FROM php-base
 
 WORKDIR /var/www
 
